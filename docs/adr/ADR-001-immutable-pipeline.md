@@ -15,13 +15,13 @@ The original ProcessorPipeline (v1.x–v1.3.2) used a mutable `Pipeline` class w
 
 ## Decision
 
-Starting with v4.0.0, `Pipeline` is declared `final readonly class`. The `pipe()` method is replaced by `withProcessor()` which returns a **new** `Pipeline` instance. The original is never modified.
+Starting with 2.0.0 (the release its documents called V4.0), `Pipeline` is declared `final readonly class`. The `pipe()` method is replaced by `withProcessor()` which returns a **new** `Pipeline` instance. The original is never modified.
 
 ```php
 // v1.x (mutable)
 $pipeline->pipe(new TrimProcessor()); // mutates $pipeline
 
-// v4.0 (immutable — ARFA 1.3 P1)
+// 2.0 and later (immutable — ARFA 1.3 P1)
 $extended = $pipeline->withProcessor(new TrimProcessor()); // new instance
 ```
 
@@ -58,6 +58,6 @@ The Pipeline is a state object. Adding a processor is a transformation that must
 
 ## References
 
-- ARFA 1.3 Specification §4.4 (ProcessorPipeline Type Definition)
+- ARFA Specification §4.4.1 (ProcessorPipeline — Type Definition; numbering as published in v1.2)
 - Okasaki, C., "Purely Functional Data Structures", Cambridge University Press, 1999
-- KaririCode Standard Specification V4.0 §3.1 (Immutability Requirements)
+- KaririCode Standard Specification V4.0 (immutability requirements)

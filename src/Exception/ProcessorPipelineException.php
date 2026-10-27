@@ -4,34 +4,45 @@ declare(strict_types=1);
 
 namespace KaririCode\ProcessorPipeline\Exception;
 
+use KaririCode\Contract\Exception\ExceptionInterface;
+
 /**
- * Base exception for the ProcessorPipeline component.
+ * Root of every exception this component throws.
  *
- * All exceptions thrown by this component extend from this class,
- * enabling granular catch blocks at any level of specificity.
+ * Each concrete exception implements exactly one family of
+ * kariricode/contract 2.11.0 (`Exception\NotFound`, `Exception\Configuration`
+ * or `Exception\Runtime`), so an edge maps it to a response without knowing
+ * this component. Codes come from the block registered to the component,
+ * 8500–8599, and every message starts with `[PP_<code>]`.
  *
- * ARFA 1.3 Compliance:
- *   P5 (Continuous Observability) — exceptions carry structured context
- *   for tracing and metrics collection.
+ * Messages never contain caller-supplied values. Processor names,
+ * specification keys and option keys go to `$context`, and the caller
+ * decides what reaches a log (Spec V4.3.3 §20.3; OWASP Top 10:2025 A09).
  *
- * @package   KaririCode\ProcessorPipeline\Exception
- * @author    Walmir Silva <walmir.silva@kariricode.org>
- * @copyright 2025 KaririCode
- * @license   MIT
- * @version   2.0.0
- * @since     1.0.0
+ * ```php
+ * use KaririCode\ProcessorPipeline\Exception\ProcessorPipelineException;
+ *
+ * try {
+ *     $builder->buildPipeline('validator', ['emial']);
+ * } catch (ProcessorPipelineException $e) {
+ *     assert($e->getCode() >= 8500 && $e->getCode() <= 8599);
+ *     assert(str_starts_with($e->getMessage(), '[PP_'));
+ * }
+ * ```
+ *
+ * @see \KaririCode\Contract\Exception\ExceptionInterface
  */
-class ProcessorPipelineException extends \RuntimeException
+abstract class ProcessorPipelineException extends \RuntimeException implements ExceptionInterface
 {
     /**
-     * @param array<string, mixed> $context Structured context for observability
+     * @param array<string, mixed> $context Structured details; may hold caller-supplied identifiers
      */
-    public function __construct(
-        string $message = '',
-        int $code = 0,
-        ?\Throwable $previous = null,
+    final protected function __construct(
+        int $code,
+        string $text,
         public readonly array $context = [],
+        ?\Throwable $previous = null,
     ) {
-        parent::__construct($message, $code, $previous);
+        parent::__construct(\sprintf('[PP_%d] %s', $code, $text), $code, $previous);
     }
 }

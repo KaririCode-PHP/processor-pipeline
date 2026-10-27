@@ -74,12 +74,62 @@ final class ProcessorRegistryTest extends TestCase
         );
     }
 
+    public function testNamedArgumentsMatchV1AndTheContract(): void
+    {
+        $processor = StubProcessor::trim();
+
+        // V1.x and kariricode/contract name these parameters $context and $name;
+        // since PHP 8.0 parameter names are part of the public API.
+        $this->registry->register(context: 'sanitizer', name: 'trim', processor: $processor);
+
+        $this->assertSame($processor, $this->registry->get(context: 'sanitizer', name: 'trim'));
+        $this->assertSame($processor, $this->registry->find(context: 'sanitizer', name: 'trim'));
+        $this->assertTrue($this->registry->has(context: 'sanitizer', name: 'trim'));
+        $this->assertTrue($this->registry->remove(context: 'sanitizer', name: 'trim'));
+    }
+
+    public function testNumericNamesStayStringsInIntrospection(): void
+    {
+        // PHP casts numeric-string array keys to int; the registry must not leak that.
+        $this->registry->register('123', '0', StubProcessor::identity());
+
+        $this->assertSame(['123'], $this->registry->getContextNames());
+        $this->assertSame(['123'], $this->registry->contextNames);
+        $this->assertSame(['0'], $this->registry->getProcessorNames('123'));
+
+        foreach ($this->registry->getContextNames() as $context) {
+            foreach ($this->registry->getProcessorNames($context) as $name) {
+                $this->assertTrue($this->registry->has($context, $name));
+            }
+        }
+    }
+
     // ── Retrieval ───────────────────────────────────────────────────
+
+    public function testFindReturnsProcessorWhenPresent(): void
+    {
+        $processor = StubProcessor::trim();
+        $this->registry->register('ctx', 'trim', $processor);
+
+        $this->assertSame($processor, $this->registry->find('ctx', 'trim'));
+    }
+
+    public function testFindReturnsNullWhenProcessorMissing(): void
+    {
+        $this->registry->register('ctx', 'other', StubProcessor::identity());
+
+        $this->assertNull($this->registry->find('ctx', 'missing'));
+    }
+
+    public function testFindReturnsNullWhenContextMissing(): void
+    {
+        $this->assertNull($this->registry->find('nonexistent', 'proc'));
+    }
 
     public function testGetThrowsWhenProcessorNotFound(): void
     {
         $this->expectException(ProcessorNotFoundException::class);
-        $this->expectExceptionMessage("Processor 'missing' not found in context 'validator'.");
+        $this->expectExceptionCode(ProcessorNotFoundException::NOT_REGISTERED);
 
         $this->registry->get('validator', 'missing');
     }
@@ -168,6 +218,15 @@ final class ProcessorRegistryTest extends TestCase
         $this->registry->register('b', 'p1', StubProcessor::identity());
 
         $this->assertSame(3, $this->registry->count());
+    }
+
+    public function testRegistryIsCountableViaCountFunction(): void
+    {
+        $this->registry->register('a', 'p1', StubProcessor::identity());
+        $this->registry->register('b', 'p2', StubProcessor::identity());
+
+        $this->assertInstanceOf(\Countable::class, $this->registry);
+        $this->assertCount(2, $this->registry);
     }
 
     // ── Property Hooks (PHP 8.4) ────────────────────────────────────

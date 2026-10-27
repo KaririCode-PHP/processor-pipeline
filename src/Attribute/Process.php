@@ -50,11 +50,6 @@ use Attribute;
  * }
  * ```
  *
- * @package   KaririCode\ProcessorPipeline\Attribute
- * @author    Walmir Silva <walmir.silva@kariricode.org>
- * @copyright 2025 KaririCode
- * @license   MIT
- * @version   2.0.0
  * @since     2.0.0
  */
 #[Attribute(Attribute::TARGET_PROPERTY | Attribute::IS_REPEATABLE)]
@@ -67,6 +62,5 @@ final readonly class Process
     public function __construct(
         public array $processors = [],
         public array $messages = [],
-    ) {
-    }
+    ) {}
 }
