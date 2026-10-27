@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace KaririCode\ProcessorPipeline\Tests\Unit\Pipeline;
 
 use KaririCode\ProcessorPipeline\Exception\PipelineExecutionException;
+use KaririCode\ProcessorPipeline\Handler\ProcessorHandler;
 use KaririCode\ProcessorPipeline\Pipeline\Pipeline;
+use KaririCode\ProcessorPipeline\Result\ProcessingResultCollection;
 use KaririCode\ProcessorPipeline\Tests\Stubs\StubFailingProcessor;
 use KaririCode\ProcessorPipeline\Tests\Stubs\StubProcessor;
 use PHPUnit\Framework\TestCase;
@@ -125,15 +127,17 @@ final class PipelineTest extends TestCase
         } catch (PipelineExecutionException $exception) {
             $this->assertSame($original, $exception->getPrevious());
             $this->assertSame(0, $exception->context['stage']);
-            $this->assertStringContainsString('root cause', $exception->getMessage());
+            $this->assertStringNotContainsString('root cause', $exception->getMessage());
         }
     }
 
-    public function testProcessReThrowsPipelineExecutionExceptionWithoutWrapping(): void
+    public function testNestedFailureIsChainedWithOuterStage(): void
     {
-        // A PipelineExecutionException from a nested pipeline should not double-wrap
+        // A processor that internally runs its own pipeline fails at inner stage 0.
         $inner = PipelineExecutionException::atStage('InnerProcessor', 0, new \RuntimeException('inner'));
         $pipeline = new Pipeline([
+            StubProcessor::identity(),
+            StubProcessor::identity(),
             StubFailingProcessor::withException($inner),
         ]);
 
@@ -141,8 +145,30 @@ final class PipelineTest extends TestCase
             $pipeline->process('input');
             $this->fail('Expected PipelineExecutionException');
         } catch (PipelineExecutionException $exception) {
-            // Should be the same exception, not a wrapper
-            $this->assertSame($inner, $exception);
+            // ARFA P5: the outer operation must stay traceable…
+            $this->assertSame(2, $exception->context['stage']);
+            $this->assertSame(StubFailingProcessor::class, $exception->context['processor']);
+            // …and the inner failure must not be lost.
+            $this->assertSame($inner, $exception->getPrevious());
+        }
+    }
+
+    public function testStageFailureNamesTheDecoratedProcessorNotTheWrapper(): void
+    {
+        $pipeline = new Pipeline([
+            new ProcessorHandler(
+                processor: StubFailingProcessor::withMessage('boom'),
+                resultCollection: new ProcessingResultCollection(),
+                haltOnError: true,
+            ),
+        ]);
+
+        try {
+            $pipeline->process('input');
+            $this->fail('Expected PipelineExecutionException');
+        } catch (PipelineExecutionException $exception) {
+            $this->assertSame(StubFailingProcessor::class, $exception->context['processor']);
+            $this->assertStringNotContainsString('ProcessorHandler', $exception->getMessage());
         }
     }
 
@@ -260,5 +286,28 @@ final class PipelineTest extends TestCase
         $pipeline = new Pipeline([StubProcessor::identity()]);
 
         $this->assertFalse($pipeline->isEmpty());
+    }
+
+    public function testPipelineIsCountableViaCountFunction(): void
+    {
+        $pipeline = new Pipeline([
+            StubProcessor::trim(),
+            StubProcessor::uppercase(),
+        ]);
+
+        $this->assertInstanceOf(\Countable::class, $pipeline);
+        $this->assertCount(2, $pipeline);
+    }
+
+    public function testWithPipelineAppendsEveryStageOfTheOther(): void
+    {
+        $left = new Pipeline([StubProcessor::identity()]);
+        $right = new Pipeline([StubProcessor::uppercase(), StubProcessor::trim(), StubProcessor::identity()]);
+
+        $combined = $left->withPipeline($right);
+
+        $this->assertCount(4, $combined);
+        $this->assertSame(' X ', $left->withPipeline(new Pipeline([StubProcessor::uppercase()]))->process(' x '));
+        $this->assertSame('X', $combined->process(' x '));
     }
 }

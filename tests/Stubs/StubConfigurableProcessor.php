@@ -11,19 +11,28 @@ final class StubConfigurableProcessor implements ConfigurableProcessor
     private int $minLength = 0;
     private int $maxLength = PHP_INT_MAX;
 
-    /** @var array<string, mixed> Last configuration received */
+    /** @var array<mixed> Last configuration received */
     public array $lastConfig = [];
 
+    /**
+     * @param array<mixed> $options
+     */
+    #[\Override]
     public function configure(array $options): void
     {
         $this->lastConfig = $options;
-        $this->minLength = $options['minLength'] ?? $this->minLength;
-        $this->maxLength = $options['maxLength'] ?? $this->maxLength;
+        $this->minLength = self::intOption($options, 'minLength', $this->minLength);
+        $this->maxLength = self::intOption($options, 'maxLength', $this->maxLength);
     }
 
+    #[\Override]
     public function process(mixed $input): mixed
     {
-        $length = mb_strlen((string) $input);
+        if (!is_string($input)) {
+            throw new \InvalidArgumentException('Expected string, ' . get_debug_type($input) . ' given.');
+        }
+
+        $length = mb_strlen($input);
 
         if ($length < $this->minLength || $length > $this->maxLength) {
             throw new \InvalidArgumentException(
@@ -32,5 +41,17 @@ final class StubConfigurableProcessor implements ConfigurableProcessor
         }
 
         return $input;
+    }
+
+    /**
+     * @param array<mixed> $options
+     */
+    private static function intOption(array $options, string $name, int $default): int
+    {
+        $value = $options[$name] ?? $default;
+
+        return is_int($value)
+            ? $value
+            : throw new \InvalidArgumentException("Option '{$name}' must be an int.");
     }
 }
