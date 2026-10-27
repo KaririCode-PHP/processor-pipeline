@@ -42,8 +42,15 @@ coverage-report-html/
 .env
 .env.*
 
-# Lock — gerenciado pelo CI
-/composer.lock
+# Lock — versionado (Spec V4.3.3 §32); entra no repositório quando
+# kariricode/contract 2.11.0 tiver tag
+
+# Harness local: resolve kariricode/contract 2.11.0 de um fixture até a tag
+/composer.harness.json
+/composer.harness.lock
+
+# SBOM gerado por `composer sbom`
+/sbom.cdx.json
 
 # Artefatos temporários
 lista_de_arquivos.txt

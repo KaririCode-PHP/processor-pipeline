@@ -1,107 +1,46 @@
+# Release gate (Spec V4.3.3 §29.1, §32). A version tag reruns every quality
+# gate, then publishes a GitHub release with that version's section of
+# CHANGELOG.md and the CycloneDX SBOM. Actions are pinned by full commit SHA;
+# the comment after each pin names the release it resolves to. Release tags
+# are signed by the maintainer (git tag -s) and checked with git tag -v.
 name: Release
-
-# ARFA 1.3 / KaririCode Spec V4.0 — Release Pipeline
-# Triggers on semantic version tags (v*).
-# Full quality gate (kcode quality) must pass before release is published.
 
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   release:
-    name: Quality Gate + GitHub Release
-    runs-on: ubuntu-latest
-
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
-
-      # PHP 8.4 + pcov: releases MUST pass with coverage (ARFA 1.3 §Testing)
-      - uses: shivammathur/setup-php@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: '8.4'
-          extensions: mbstring, xml
           coverage: pcov
           tools: composer:v2
-
-      # --no-scripts prevents accidental environment pollution during release
-      - name: Install dependencies
-        run: composer install --no-interaction --prefer-dist --no-progress --no-scripts
-
-      - name: Install kcode (KaririCode Devkit)
+      - run: composer validate --strict
+      - run: composer install --no-interaction --no-progress --prefer-dist
+      - run: composer check
+      - run: composer infection
+      - run: composer sbom
+      - name: Extract this version's notes from CHANGELOG.md
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
-          wget -q https://github.com/KaririCode-Framework/kariricode-devkit/releases/latest/download/kcode.phar
-          chmod +x kcode.phar
-          sudo mv kcode.phar /usr/local/bin/kcode
-
-      - name: Initialize devkit
-        run: kcode init
-
-      # src/Contract was removed in v4 — patch the generated phpstan.neon
-      - name: Patch phpstan.neon (remove stale excludePaths)
-        run: |
-          sed -i '/excludePaths:/,/- \.\.\/src\/Contract/d' .kcode/phpstan.neon
-
-      # Full pipeline: cs-fixer → phpstan (L9) → psalm → phpunit (pcov)
-      # Exit code ≠ 0 aborts the release — zero tolerance (ARFA 1.3)
-      - name: Run full quality pipeline (release gate)
-        run: kcode quality
-
-      - name: Extract version from tag
-        id: version
-        run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+          version="${TAG#v}"
+          awk -v heading="## [${version}]" 'index($0, heading) == 1 { found = 1; next } /^## \[/ { found = 0 } found' CHANGELOG.md > release-notes.md
+          test -s release-notes.md || { echo "CHANGELOG.md has no section for ${version}" >&2; exit 1; }
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: KaririCode ProcessorPipeline ${{ steps.version.outputs.tag }}
-          draft: false
-          prerelease: false
-          body: |
-            ## KaririCode\ProcessorPipeline ${{ steps.version.outputs.tag }}
-
-            A robust, immutable processor pipeline component for the KaririCode Framework.
-            Enables modular, configurable processing chains for data transformation,
-            validation, and sanitization. **ARFA 1.3 compliant.**
-
-            ## Installation
-
-            ```bash
-            composer require kariricode/processor-pipeline
-            ```
-
-            ## Quick Start
-
-            ```php
-            use KaririCode\ProcessorPipeline\ProcessorRegistry;
-            use KaririCode\ProcessorPipeline\ProcessorBuilder;
-
-            $registry = new ProcessorRegistry();
-            $registry
-                ->register('sanitizer', 'trim', new TrimProcessor())
-                ->register('sanitizer', 'lowercase', new LowercaseProcessor());
-
-            $builder  = new ProcessorBuilder($registry);
-            $pipeline = $builder->buildPipeline('sanitizer', ['trim', 'lowercase']);
-
-            $result = $pipeline->process('  HELLO WORLD  ');
-            // Result: 'hello world'
-            ```
-
-            ## Quality Metrics
-
-            | Metric | Value |
-            |--------|-------|
-            | Tests | 128 passing |
-            | Assertions | 234 |
-            | PHPStan Level | 9 (0 errors) |
-            | Psalm | 100% (0 errors) |
-            | Coverage | 100% classes / methods / lines |
-            | PHP Version | 8.4+ |
-
-            See [CHANGELOG.md](CHANGELOG.md) for details.
+          name: KaririCode ProcessorPipeline ${{ github.ref_name }}
+          body_path: release-notes.md
+          files: sbom.cdx.json
+          fail_on_unmatched_files: true
