@@ -1,78 +1,26 @@
 # KaririCode ProcessorPipeline
 
-<div align="center">
+[![PHP 8.4+](https://img.shields.io/badge/php-8.4%2B-777bb4.svg)](https://www.php.net/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![ARFA 1.3 level 1](https://img.shields.io/badge/ARFA-1.3%20level%201-orange.svg)](docs/spec/SPEC-001-processor-pipeline.md)
+[![Spec 4.3.3](https://img.shields.io/badge/KaririCode%20Spec-4.3.3-blue.svg)](docs/quality/QD-V433-COMPLIANCE.md)
 
-[![PHP 8.4+](https://img.shields.io/badge/PHP-8.4%2B-777BB4?logo=php&logoColor=white)](https://www.php.net/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-22c55e.svg)](LICENSE)
-[![PHPStan Level 9](https://img.shields.io/badge/PHPStan-Level%209-4F46E5)](https://phpstan.org/)
-[![Tests](https://img.shields.io/badge/Tests-128%20passing-22c55e)](https://kariricode.org)
-[![ARFA](https://img.shields.io/badge/ARFA-1.3-orange)](https://kariricode.org)
-[![KaririCode Framework](https://img.shields.io/badge/KaririCode-Framework-orange)](https://kariricode.org)
+Ordered, immutable processing pipelines built from a declarative
+specification. Validator, sanitizer and transformer components register their
+processors; this package assembles and runs them.
 
-**Immutable, composable processor pipelines for the KaririCode Framework —  
-context-based registry, flexible spec format, structured error collection, PHP 8.4+.**
+## Why
 
-[Installation](#installation) · [Quick Start](#quick-start) · [Features](#features) · [Pipeline](#the-pipeline) · [Architecture](#architecture)
-
-</div>
-
----
-
-## The Problem
-
-Building reusable data-processing chains in PHP typically means either rigid class hierarchies or ad-hoc chains of function calls that are hard to test, configure, and compose:
-
-```php
-// The old way: ad-hoc chain, hard to test or reuse
-function processInput(string $input): string
-{
-    $input = trim($input);
-    $input = strtolower($input);
-    if (strlen($input) < 3) {
-        throw new \InvalidArgumentException('Too short');
-    }
-    return $input;
-}
-```
-
-No registry, no configuration per processor, no error collection, no immutability — just imperative code you copy-paste everywhere.
-
-## The Solution
-
-```php
-use KaririCode\ProcessorPipeline\ProcessorRegistry;
-use KaririCode\ProcessorPipeline\ProcessorBuilder;
-
-// 1. Register processors once, per context
-$registry = new ProcessorRegistry();
-$registry
-    ->register('sanitizer', 'trim',      new TrimProcessor())
-    ->register('sanitizer', 'lowercase', new LowercaseProcessor())
-    ->register('validator', 'length',    new LengthValidator());
-
-// 2. Build immutable pipelines from specs
-$builder   = new ProcessorBuilder($registry);
-$sanitized = $builder->buildPipeline('sanitizer', ['trim', 'lowercase']);
-$validated = $builder->buildPipeline('validator', [
-    'length' => ['minLength' => 3, 'maxLength' => 50],
-]);
-
-// 3. Execute — pipelines are immutable and reusable
-$output = $sanitized->process('  HELLO WORLD  '); // 'hello world'
-$validated->process($output);
-```
-
----
-
-## Requirements
-
-| Requirement | Version |
-|---|---|
-| PHP | 8.4 or higher |
-| kariricode/contract | ^2.8 |
-| kariricode/exception | ^1.2 |
-
----
+- **One specification format.** `['trim', 'email', 'length' => ['min' => 3]]`
+  can come from code, attributes or configuration. The builder rejects every
+  malformed entry instead of skipping it.
+- **Immutable pipelines.** `withProcessor()` returns a new pipeline, so one
+  instance is safe to share across requests on long-running runtimes.
+- **Fails closed.** A failing stage stops the pipeline with a coded exception
+  that never repeats the rejected value; collecting every error is an
+  explicit opt-in.
+- **Resilience through the contract.** Circuit breaker, rate limit and retry
+  are decorators over `kariricode/contract` ports, so any implementation fits.
 
 ## Installation
 
@@ -80,25 +28,17 @@ $validated->process($output);
 composer require kariricode/processor-pipeline
 ```
 
----
+Requires PHP 8.4 and `kariricode/contract` ^2.11. As of 2026-10-26,
+`kariricode/contract` 2.11.0 is not tagged, so the package installs once that
+tag exists (QD-V433 §5).
 
 ## Quick Start
 
-Define processors, register them, build a pipeline, execute:
-
 ```php
-<?php
-
-declare(strict_types=1);
-
-require_once __DIR__ . '/vendor/autoload.php';
-
 use KaririCode\Contract\Processor\Processor;
-use KaririCode\Contract\Processor\ConfigurableProcessor;
-use KaririCode\ProcessorPipeline\ProcessorRegistry;
 use KaririCode\ProcessorPipeline\ProcessorBuilder;
+use KaririCode\ProcessorPipeline\ProcessorRegistry;
 
-// 1. Define processors
 final class TrimProcessor implements Processor
 {
     public function process(mixed $input): mixed
@@ -107,289 +47,205 @@ final class TrimProcessor implements Processor
     }
 }
 
-final class LengthValidator implements ConfigurableProcessor
+final class EmailValidator implements Processor
 {
-    private int $min = 0;
-    private int $max = PHP_INT_MAX;
-
-    public function configure(array $options): void
-    {
-        $this->min = $options['minLength'] ?? $this->min;
-        $this->max = $options['maxLength'] ?? $this->max;
-    }
-
     public function process(mixed $input): mixed
     {
-        $len = mb_strlen((string) $input);
-        if ($len < $this->min || $len > $this->max) {
-            throw new \LengthException("Length must be between {$this->min} and {$this->max}.");
+        if (!is_string($input) || filter_var($input, FILTER_VALIDATE_EMAIL) === false) {
+            throw new InvalidArgumentException('Invalid email.');
         }
+
         return $input;
     }
 }
 
-// 2. Register and build
 $registry = new ProcessorRegistry();
-$registry
-    ->register('sanitizer', 'trim',   new TrimProcessor())
-    ->register('validator', 'length', new LengthValidator());
-
-$builder  = new ProcessorBuilder($registry);
-$pipeline = $builder->buildPipeline('sanitizer', ['trim']);
-$validate = $builder->buildPipeline('validator', [
-    'length' => ['minLength' => 3, 'maxLength' => 50],
-]);
-
-// 3. Execute
-$sanitized = $pipeline->process('  Hello, World!  '); // 'Hello, World!'
-$validate->process($sanitized);                        // passes — 13 chars
-
-var_dump($sanitized); // string(13) "Hello, World!"
-```
-
----
-
-## Features
-
-### Immutable Pipelines (ARFA P1)
-
-`Pipeline` is a `readonly class`. Adding processors returns a **new** instance — the original is never modified:
-
-```php
-$base     = $builder->buildPipeline('sanitizer', ['trim']);
-$extended = $base->withProcessor(new LowercaseProcessor());
-
-// $base still has 1 processor
-// $extended has 2 processors
-assert($base->count() === 1);
-assert($extended->count() === 2);
-```
-
-### Context-Based Registry
-
-Processors are namespaced by context — no name collisions across domains:
-
-```php
+$registry->register('sanitizer', 'trim', new TrimProcessor());
 $registry->register('validator', 'email', new EmailValidator());
-$registry->register('sanitizer', 'email', new EmailSanitizer()); // same name, different context
 
-$validationPipeline  = $builder->buildPipeline('validator', ['email']);
-$sanitizationPipeline = $builder->buildPipeline('sanitizer', ['email']);
+$builder = new ProcessorBuilder($registry);
+$pipeline = $builder->buildPipeline('sanitizer', ['trim'])
+    ->withPipeline($builder->buildPipeline('validator', ['email']));
+
+assert($pipeline->process('  walmir@kariricode.org  ') === 'walmir@kariricode.org');
 ```
 
-### Flexible Specification Format
+## Specification Format
 
-Build pipelines with simple lists, enable/disable flags, or per-processor configuration:
+| Entry | Meaning |
+|---|---|
+| `'trim'` | run the registered `trim` |
+| `'trim' => true` or `'trim' => []` | the same |
+| `'trim' => false` | skip it |
+| `'length' => ['min' => 3]` | run a configured clone; the processor must implement `ConfigurableProcessor` |
 
-```php
-$pipeline = $builder->buildPipeline('validator', [
-    'required',                                  // Simple: always enabled
-    'trim'   => true,                            // Explicit: enabled
-    'strict' => false,                           // Explicit: disabled (skipped)
-    'length' => ['minLength' => 3, 'maxLength' => 50], // Configured
-]);
-```
+Anything else (an integer option key, a string flag, options for a processor
+that is not configurable) fails the build with
+`InvalidProcessorConfigurationException`. The registered instance is never
+modified.
 
-### Configurable Processors
+## Handling Failures
 
-`ConfigurableProcessor` allows per-build configuration without constructing new instances:
-
-```php
-final class SlugProcessor implements ConfigurableProcessor
-{
-    private string $separator = '-';
-
-    public function configure(array $options): void
-    {
-        $this->separator = $options['separator'] ?? '-';
-    }
-
-    public function process(mixed $input): mixed
-    {
-        return strtolower(str_replace(' ', $this->separator, trim((string) $input)));
-    }
-}
-
-$pipeline = $builder->buildPipeline('formatter', [
-    'slug' => ['separator' => '_'],
-]);
-$pipeline->process('Hello World'); // 'hello_world'
-```
-
-### Error Collection via ProcessorHandler
-
-Wrap processors for non-halting error collection — useful in validation scenarios:
-
-```php
-use KaririCode\ProcessorPipeline\Handler\ProcessorHandler;
-use KaririCode\ProcessorPipeline\Result\ProcessingResultCollection;
-
-$results = new ProcessingResultCollection();
-
-$handler = new ProcessorHandler(
-    processor:        new EmailValidator(),
-    resultCollection: $results,
-    haltOnError:      false,   // continue on failure
-);
-
-$output = $handler->process('not-an-email'); // returns input unchanged
-
-if ($results->hasErrors()) {
-    foreach ($results->getErrors() as $processor => $errors) {
-        foreach ($errors as $error) {
-            echo "{$processor}: {$error['message']}\n";
-        }
-    }
-}
-```
-
-### PHP 8.4 Attributes
-
-Use `#[Process]` to declare pipelines declaratively on entity properties:
-
-```php
-use KaririCode\ProcessorPipeline\Attribute\Process;
-
-final class UserProfile
-{
-    #[Process(
-        processors: ['trim', 'lowercase'],
-        messages:   [],
-    )]
-    public private(set) string $email = '';
-
-    #[Process(
-        processors: ['required', 'length' => ['minLength' => 3]],
-        messages:   ['required' => 'Username is required.'],
-    )]
-    public private(set) string $username = '';
-}
-```
-
-### Structured Exceptions
-
-All exceptions carry a `context` array for structured logging and tracing:
+A failing stage stops the pipeline. The exception names the stage and keeps
+the cause in `getPrevious()`:
 
 ```php
 use KaririCode\ProcessorPipeline\Exception\PipelineExecutionException;
 
 try {
-    $pipeline->process($input);
+    $pipeline->process('  not-an-email ');
 } catch (PipelineExecutionException $e) {
-    // $e->context['stage']         — stage index where failure occurred
-    // $e->context['processorName'] — FQCN of the failing processor
-    // $e->getPrevious()            — original exception
+    assert($e->getCode() === PipelineExecutionException::STAGE_FAILED);
+    assert($e->context['stage'] === 1);
+    assert($e->getPrevious()->getMessage() === 'Invalid email.');
+    assert(!str_contains($e->getMessage(), 'not-an-email'));
 }
 ```
 
----
+To report every problem of a form at once, wrap the stages in
+`ProcessorHandler` and opt into collect-all mode. A failing stage then passes
+its input through, so discard or re-check the output when there are errors:
 
-## The Pipeline
+```php
+use KaririCode\ProcessorPipeline\Handler\ProcessorHandler;
+use KaririCode\ProcessorPipeline\Pipeline\Pipeline;
+use KaririCode\ProcessorPipeline\Result\ProcessingResultCollection;
 
-```
-ProcessorBuilder::buildPipeline($context, $specs)
-        │
-        ▼
-foreach spec entry:
-    resolveSpec($key, $value)
-      ├── string key   → name only (enabled, default config)
-      ├── name => true → enabled, no config
-      ├── name => false → SKIP
-      └── name => [..] → enabled + configure()
-        │
-        ▼
-    ProcessorRegistry::get($context, $name)
-    ConfigurableProcessor::configure($options)  ← if applicable
-    $processors[] = $processor
-        │
-        ▼
-new Pipeline($processors)   ← immutable, readonly
+$results = new ProcessingResultCollection();
+$form = new Pipeline([
+    new ProcessorHandler(new TrimProcessor(), $results, haltOnError: false),
+    new ProcessorHandler(new EmailValidator(), $results, haltOnError: false),
+]);
 
-Pipeline::process($input)
-        │
-        ▼
-foreach processor as $index => $p:
-    try:
-        $state = $p->process($state)
-    catch \Throwable:
-        throw PipelineExecutionException::atStage($p::class, $index, $cause)
-        │
-        ▼
-return $state
+$form->process('not-an-email');
+
+assert($results->hasErrors);
+assert(array_keys($results->errors) === [EmailValidator::class]);
 ```
 
----
+Without `haltOnError: false`, the handler records the failure and rethrows it.
+
+## Error Codes
+
+Every exception implements one family of `kariricode/contract` 2.11.0, and
+its message starts with `[PP_<code>]`.
+
+| Code | Exception | Family | Cause |
+|---|---|---|---|
+| 8501 | `ProcessorNotFoundException` | `NotFound` | no processor under that name in the context |
+| 8510 | `InvalidProcessorConfigurationException` | `Configuration` | specification entry outside the grammar |
+| 8511 | `InvalidProcessorConfigurationException` | `Configuration` | option keyed by an integer |
+| 8512 | `InvalidProcessorConfigurationException` | `Configuration` | options for a processor that is not configurable |
+| 8520 | `PipelineExecutionException` | `Runtime` | a stage threw; the cause is `getPrevious()` |
+| 8530 | `RateLimitExceededException` | `Runtime` | the stage's rate limit was reached |
+
+## Metrics
+
+A `PipelineObserver` receives each stage's index, name and duration in
+nanoseconds. Without an observer, the clock is never read.
+
+```php
+use KaririCode\ProcessorPipeline\Observer\PipelineObserver;
+
+final class StageTimer implements PipelineObserver
+{
+    /** @var list<string> */
+    public array $lines = [];
+
+    public function stageSucceeded(int $stageIndex, string $processorClass, int $durationNs): void
+    {
+        $this->lines[] = sprintf('%d %s %.3f ms', $stageIndex, $processorClass, $durationNs / 1e6);
+    }
+
+    public function stageFailed(int $stageIndex, string $processorClass, int $durationNs, Throwable $cause): void
+    {
+        $this->lines[] = sprintf('%d %s failed (%s)', $stageIndex, $processorClass, $cause::class);
+    }
+}
+
+$timer = new StageTimer();
+$pipeline->withObserver($timer)->process(' walmir@kariricode.org ');
+
+assert(count($timer->lines) === 2);
+```
+
+## Resilience
+
+Three decorators wrap a stage; each depends only on a `kariricode/contract`
+port, so `kariricode/circuit-breaker`, `kariricode/rate-limiter` or any other
+implementation fits. Stages keep the name of the wrapped processor.
+
+```php
+// illustrative — $breaker, $limiter and $policy implement the contract ports
+use KaririCode\ProcessorPipeline\Integration\CircuitBreakerProcessor;
+use KaririCode\ProcessorPipeline\Integration\RateLimitedProcessor;
+use KaririCode\ProcessorPipeline\Integration\RetryingProcessor;
+
+$stage = new RetryingProcessor(
+    new CircuitBreakerProcessor(
+        new RateLimitedProcessor(new GeocodeProcessor($api), $limiter, key: "geocode:{$tenantId}"),
+        $breaker,
+    ),
+    $policy,
+);
+$pipeline = $pipeline->withProcessor($stage);
+```
+
+| Decorator | Port | On rejection |
+|---|---|---|
+| `RetryingProcessor` | `RetryPolicy` | rethrows the last error when the policy declines |
+| `CircuitBreakerProcessor` | `ManualCircuitBreaker` | the breaker's `CallNotPermittedException`, with `retryAfterSeconds` |
+| `RateLimitedProcessor` | `RateLimiter` | `RateLimitExceededException` (8530), with `retryAfterSeconds` |
+
+The default retry wait blocks the process; on PHP-FPM keep attempts few and
+delays capped.
+
+## Ecosystem Position
+
+```
+kariricode/contract  (Processor, ConfigurableProcessor, resilience ports, exception families)
+        ▲
+        │ implements / consumes
+kariricode/processor-pipeline ◀── validator, sanitizer, transformer (register processors)
+        │ decorators over ports
+        ▼
+kariricode/circuit-breaker, kariricode/rate-limiter (implementations, optional)
+```
 
 ## Architecture
 
-### Source layout
+| Path | Role |
+|---|---|
+| `src/ProcessorRegistry.php` | prototypes by context and name |
+| `src/ProcessorBuilder.php` | specification → pipeline, fail closed |
+| `src/Pipeline/Pipeline.php` | immutable ordered stages |
+| `src/Handler/ProcessorHandler.php` | records a stage failure; collect-all is opt-in |
+| `src/Handler/ProcessorDecorator.php` | exposes the wrapped processor for naming |
+| `src/Handler/StageName.php` | stage identity through decorators (internal) |
+| `src/Observer/PipelineObserver.php` | per-stage metrics |
+| `src/Result/ProcessingResultCollection.php` | errors, warnings and trace of one execution |
+| `src/Integration/*` | circuit breaker, rate limit and retry decorators |
+| `src/Attribute/Process.php` | specification carried by an attribute |
+| `src/Exception/*` | coded exceptions, one contract family each |
 
+## Quality
+
+```bash
+composer check            # cs-check, phpstan, psalm, complexity, test, test-conformance, security
+composer infection        # mutation testing (MSI ≥ 80)
+composer sbom             # CycloneDX 1.5
 ```
-src/
-├── Attribute/
-│   └── Process.php                       PHP 8.4 attribute for declarative pipelines
-├── Exception/
-│   ├── PipelineExecutionException.php    Stage-aware failure with context array
-│   ├── ProcessorNotFoundException.php    Registry miss
-│   ├── InvalidProcessorConfigurationException.php
-│   └── ProcessorPipelineException.php    Base exception
-├── Handler/
-│   └── ProcessorHandler.php             Error-collecting processor wrapper
-├── Pipeline/
-│   └── Pipeline.php                     Immutable readonly sequential executor
-├── Result/
-│   └── ProcessingResultCollection.php   Error + execution trace accumulator
-├── ProcessorBuilder.php                 Factory: spec → Pipeline
-└── ProcessorRegistry.php               Context-based processor store
-```
 
-### Key design decisions
+Measured values and open items: [QD-V433-COMPLIANCE](docs/quality/QD-V433-COMPLIANCE.md).
 
-| Decision | Rationale | ADR |
-|---|---|---|
-| Immutable `readonly` Pipeline | Eliminates shared-state bugs; safe to reuse across requests | [ADR-001](docs/adrs/ADR-001-immutable-pipeline.md) |
-| Context-based registry | Prevents name collisions between validator/sanitizer/transformer domains | [ADR-002](docs/adrs/ADR-002-context-based-registry.md) |
-| Flexible spec format | Same interface for simple lists and richly-configured pipelines | [ADR-003](docs/adrs/ADR-003-processor-specification-format.md) |
-| `ProcessorHandler` wrapper | Decouples error collection from processor logic; supports halt-or-continue | — |
-| `PipelineExecutionException` with stage context | Structured observability — which stage, which processor, which cause | — |
+## Documentation
 
-### Specifications
+- [SPEC-001](docs/spec/SPEC-001-processor-pipeline.md): types, algorithms, error model, migration from 1.x
+- [ADR-001 … ADR-008](docs/adr/): design decisions
+- [SECURITY.md](SECURITY.md) and [CHANGELOG.md](CHANGELOG.md)
 
-| Spec | Covers |
-|---|---|
-| [SPEC-001](docs/specs/SPEC-001-processor-pipeline.md) | Full pipeline: registry → builder → execution → error collection |
-
----
-
-## Integration with the KaririCode Ecosystem
-
-ProcessorPipeline is the **execution engine** used internally by other KaririCode components:
-
-| Component | Role |
-|---|---|
-| `kariricode/validator` | Builds validation pipelines from `#[Validate]` attributes |
-| `kariricode/sanitizer` | Builds sanitization pipelines from `#[Sanitize]` attributes |
-| `kariricode/transformer` | Builds transformation pipelines from `#[Transform]` attributes |
-| `kariricode/property-inspector` | Discovers `#[Process]` attributes and dispatches to pipeline handlers |
-
-Any component that needs **configurable, composable processing chains** can be built on top of this engine.
-
----
-
-## Project Stats
-
-| Metric | Value |
-|---|---|
-| PHP source files | 8 |
-| External runtime dependencies | 2 (contract · exception) |
-| Test suite | 128 tests · 234 assertions |
-| PHPStan level | 9 |
-| Code coverage | 100% classes / methods / lines |
-| PHP version | 8.4+ |
-| ARFA compliance | 1.3 |
-| Test suites | Unit + Integration |
-
----
+Class docblocks hold the detailed reference; their examples run in the test
+suite.
 
 ## Contributing
 
@@ -397,22 +253,18 @@ Any component that needs **configurable, composable processing chains** can be b
 git clone https://github.com/KaririCode-Framework/kariricode-processor-pipeline.git
 cd kariricode-processor-pipeline
 composer install
-kcode init
-kcode quality  # Must pass before opening a PR
+composer check   # must pass before a pull request
 ```
 
----
+Pull requests target `develop`. Report vulnerabilities privately, as
+[SECURITY.md](SECURITY.md) describes.
 
 ## License
 
-[MIT License](LICENSE) © [Walmir Silva](mailto:community@kariricode.org)
+MIT. See [LICENSE](LICENSE).
 
 ---
 
-<div align="center">
-
-Part of the **[KaririCode Framework](https://kariricode.org)** ecosystem.
-
-[kariricode.org](https://kariricode.org) · [GitHub](https://github.com/KaririCode-Framework/kariricode-processor-pipeline) · [Packagist](https://packagist.org/packages/kariricode/processor-pipeline) · [Issues](https://github.com/KaririCode-Framework/kariricode-processor-pipeline/issues)
-
-</div>
+Part of the [KaririCode Framework](https://kariricode.org) ·
+[Packagist](https://packagist.org/packages/kariricode/processor-pipeline) ·
+[Issues](https://github.com/KaririCode-Framework/kariricode-processor-pipeline/issues)
