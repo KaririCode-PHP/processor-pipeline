@@ -1,15 +1,15 @@
 name: CI
 
 # ARFA 1.3 / KaririCode Spec V4.0 — Unified CI Pipeline
-# Runs on every push and PR targeting main or develop.
+# Runs on every push and PR targeting main.
 # Full pipeline: cs-fixer → phpstan (L9) → psalm → phpunit (pcov)
 # Zero tolerance: any tool failure blocks the merge.
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -35,7 +35,7 @@ jobs:
       # Bootstrap kcode.phar from the official KaririCode release
       - name: Install kcode (KaririCode Devkit)
         run: |
-          wget -q https://github.com/KaririCode-Framework/kariricode-devkit/releases/latest/download/kcode.phar
+          wget -q https://github.com/KaririCode-PHP/devkit/releases/latest/download/kcode.phar
           chmod +x kcode.phar
           sudo mv kcode.phar /usr/local/bin/kcode
 
