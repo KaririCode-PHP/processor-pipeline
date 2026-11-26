@@ -34,7 +34,7 @@ jobs:
 
       - name: Install kcode (KaririCode Devkit)
         run: |
-          wget -q https://github.com/KaririCode-Framework/kariricode-devkit/releases/latest/download/kcode.phar
+          wget -q https://github.com/KaririCode-PHP/devkit/releases/latest/download/kcode.phar
           chmod +x kcode.phar
           sudo mv kcode.phar /usr/local/bin/kcode
 
