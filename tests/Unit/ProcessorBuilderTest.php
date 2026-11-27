@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace KaririCode\ProcessorPipeline\Tests\Unit;
 
 use KaririCode\ProcessorPipeline\Exception\InvalidProcessorConfigurationException;
+use KaririCode\ProcessorPipeline\Exception\PipelineExecutionException;
 use KaririCode\ProcessorPipeline\Exception\ProcessorNotFoundException;
 use KaririCode\ProcessorPipeline\Pipeline\Pipeline;
 use KaririCode\ProcessorPipeline\ProcessorBuilder;
 use KaririCode\ProcessorPipeline\ProcessorRegistry;
 use KaririCode\ProcessorPipeline\Tests\Stubs\StubConfigurableProcessor;
 use KaririCode\ProcessorPipeline\Tests\Stubs\StubProcessor;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class ProcessorBuilderTest extends TestCase
@@ -92,19 +94,24 @@ final class ProcessorBuilderTest extends TestCase
         $configurable = new StubConfigurableProcessor();
         $this->registry->register('validator', 'length', $configurable);
 
-        $this->builder->buildPipeline('validator', [
+        $pipeline = $this->builder->buildPipeline('validator', [
             'length' => ['minLength' => 3, 'maxLength' => 50],
         ]);
+        $configured = $pipeline->getProcessors()[0];
 
-        $this->assertSame(['minLength' => 3, 'maxLength' => 50], $configurable->lastConfig);
+        // The configured copy carries the options; the registered prototype does not.
+        $this->assertInstanceOf(StubConfigurableProcessor::class, $configured);
+        $this->assertSame(['minLength' => 3, 'maxLength' => 50], $configured->lastConfig);
+        $this->assertSame([], $configurable->lastConfig);
     }
 
+    #[\PHPUnit\Framework\Attributes\Group('fail-closed')]
     public function testBuildPipelineThrowsWhenConfiguringNonConfigurableProcessor(): void
     {
         $this->registry->register('ctx', 'simple', StubProcessor::identity());
 
         $this->expectException(InvalidProcessorConfigurationException::class);
-        $this->expectExceptionMessage("Invalid configuration for processor 'simple'");
+        $this->expectExceptionCode(InvalidProcessorConfigurationException::NOT_CONFIGURABLE);
 
         $this->builder->buildPipeline('ctx', [
             'simple' => ['key' => 'value'],
@@ -130,7 +137,11 @@ final class ProcessorBuilderTest extends TestCase
         ]);
 
         $this->assertSame(3, $pipeline->count());
-        $this->assertSame(['minLength' => 1], $configurable->lastConfig);
+
+        $configured = $pipeline->getProcessors()[2];
+        $this->assertInstanceOf(StubConfigurableProcessor::class, $configured);
+        $this->assertSame(['minLength' => 1], $configured->lastConfig);
+        $this->assertSame([], $configurable->lastConfig);
     }
 
     // ── Empty Specification ─────────────────────────────────────────
@@ -144,20 +155,22 @@ final class ProcessorBuilderTest extends TestCase
 
     // ── Unknown Format Handling ─────────────────────────────────────
 
-    public function testBuildPipelineIgnoresUnknownFormats(): void
+    #[\PHPUnit\Framework\Attributes\Group('fail-closed')]
+    public function testUnknownFormatFailsTheBuildInsteadOfDroppingTheEntry(): void
     {
         $this->registry->register('ctx', 'trim', StubProcessor::trim());
+        $this->registry->register('ctx', 'upper', StubProcessor::uppercase());
 
-        // int key + non-string value → skipped
-        // string key + int value → skipped
-        $pipeline = $this->builder->buildPipeline('ctx', [
+        // 'unknown' => 42 matches no recognized format. Dropping it silently
+        // would hide typos such as 'required' => 'yes' (fail-open).
+        $this->expectException(InvalidProcessorConfigurationException::class);
+        $this->expectExceptionCode(InvalidProcessorConfigurationException::UNSUPPORTED_ENTRY);
+
+        $this->builder->buildPipeline('ctx', [
             'trim',
-            0 => 'trim',  // duplicate but valid
-            'unknown' => 42,  // unknown format → skipped
+            'upper' => true,
+            'unknown' => 42,
         ]);
-
-        // 'trim' appears once (index 0 overwritten by explicit 0 => 'trim')
-        $this->assertGreaterThanOrEqual(1, $pipeline->count());
     }
 
     // ── Error Cases ─────────────────────────────────────────────────
@@ -165,7 +178,7 @@ final class ProcessorBuilderTest extends TestCase
     public function testBuildPipelineThrowsForUnregisteredProcessor(): void
     {
         $this->expectException(ProcessorNotFoundException::class);
-        $this->expectExceptionMessage("Processor 'missing' not found in context 'ctx'.");
+        $this->expectExceptionCode(ProcessorNotFoundException::NOT_REGISTERED);
 
         $this->builder->buildPipeline('ctx', ['missing']);
     }
@@ -188,5 +201,82 @@ final class ProcessorBuilderTest extends TestCase
 
         $this->assertSame(1, $pipeline->count());
         $this->assertSame(2, $extended->count());
+    }
+
+    // ── Regression: shared state across builds (ARFA P1) ───────────
+
+    public function testConfiguredBuildsDoNotShareProcessorState(): void
+    {
+        $this->registry->register('validator', 'length', new StubConfigurableProcessor());
+
+        $lenient = $this->builder->buildPipeline('validator', ['length' => ['minLength' => 1]]);
+        $strict = $this->builder->buildPipeline('validator', ['length' => ['minLength' => 10]]);
+
+        // Building $strict must not reconfigure the processor inside $lenient.
+        $this->assertSame('hello', $lenient->process('hello'));
+
+        $this->expectException(PipelineExecutionException::class);
+        $strict->process('hello');
+    }
+
+    public function testBuildDoesNotMutateRegisteredPrototype(): void
+    {
+        $prototype = new StubConfigurableProcessor();
+        $this->registry->register('validator', 'length', $prototype);
+
+        $pipeline = $this->builder->buildPipeline('validator', ['length' => ['minLength' => 3]]);
+        $configured = $pipeline->getProcessors()[0];
+
+        $this->assertSame([], $prototype->lastConfig);
+        $this->assertInstanceOf(StubConfigurableProcessor::class, $configured);
+        $this->assertNotSame($prototype, $configured);
+        $this->assertSame(['minLength' => 3], $configured->lastConfig);
+    }
+
+    // ── Regression: malformed specs must fail closed ────────────────
+
+    /**
+     * @return iterable<string, array{array<int|string, mixed>}>
+     */
+    public static function malformedSpecProvider(): iterable
+    {
+        yield 'string flag instead of bool' => [['trim' => 'yes']];
+        yield 'null flag' => [['trim' => null]];
+        yield 'integer flag' => [['trim' => 1]];
+        yield 'options without a name' => [[['minLength' => 3]]];
+        yield 'object value' => [['trim' => new \stdClass()]];
+    }
+
+    /**
+     * @param array<int|string, mixed> $spec
+     */
+    #[DataProvider('malformedSpecProvider')]
+    public function testMalformedSpecEntryIsRejected(array $spec): void
+    {
+        $this->registry->register('ctx', 'trim', StubProcessor::trim());
+
+        $this->expectException(InvalidProcessorConfigurationException::class);
+
+        $this->builder->buildPipeline('ctx', $spec);
+    }
+
+    #[\PHPUnit\Framework\Attributes\Group('fail-closed')]
+    public function testConfigurationWithIntegerKeysIsRejected(): void
+    {
+        $this->registry->register('ctx', 'length', new StubConfigurableProcessor());
+
+        $this->expectException(InvalidProcessorConfigurationException::class);
+        $this->expectExceptionCode(InvalidProcessorConfigurationException::OPTION_KEY_NOT_A_NAME);
+
+        $this->builder->buildPipeline('ctx', ['length' => [3, 50]]);
+    }
+
+    public function testEmptyConfigurationMeansEnabledWithDefaults(): void
+    {
+        $this->registry->register('ctx', 'trim', StubProcessor::trim());
+
+        $pipeline = $this->builder->buildPipeline('ctx', ['trim' => []]);
+
+        $this->assertSame('x', $pipeline->process('  x  '));
     }
 }

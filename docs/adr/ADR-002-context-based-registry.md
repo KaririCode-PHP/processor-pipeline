@@ -1,6 +1,6 @@
 # ADR-002: Context-Based Processor Registry
 
-**Status:** Accepted  
+**Status:** Accepted — amended 2026-09-29 (justification corrected)  
 **Date:** 2025-11-20  
 **Author:** Walmir Silva  
 **Supersedes:** N/A
@@ -22,13 +22,11 @@ $validator = $registry->get('validator', 'trim');
 $sanitizer = $registry->get('sanitizer', 'trim');
 ```
 
-## ARFA 1.3 Justification
+## Justification
 
-**Principle 3 (Adaptive Context Awareness):**
+The two-level map is justified by **namespace isolation**: independent domains can use the same processor names without coordination.
 
-> Context(t) = {metrics(t), conditions(t), history(t)} → Adaptation(t+1)
-
-The processing context determines which domain the processor belongs to. The registry's context parameter is the structural expression of this principle.
+> **Amendment (2026-09-29).** The original revision justified this decision with ARFA 1.3 Principle 3 (`Context(t) = {metrics(t), conditions(t), history(t)} → Adaptation(t+1)`). That was a category error: P3 describes *run-time adaptation* driven by metrics and history, while the registry's `context` is a static string namespace fixed at registration. The decision stands on isolation alone; P3 is **not implemented** by this component (see SPEC-001 §2). The metrics an adaptive context would consume are exposed by `PipelineObserver` (ADR-006).
 
 **Principle 4 (Protocol Agnosticism):**
 
@@ -58,5 +56,4 @@ The same processor class can be registered under multiple contexts for different
 
 ## References
 
-- ARFA 1.3 Specification §4.3 (ProcessorRegistry Type Definition)
-- KaririCode Standard Specification V4.0 §5.2 (Context Partitioning)
+- KaririCode Standard Specification V4.0

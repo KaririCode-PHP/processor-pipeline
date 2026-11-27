@@ -53,7 +53,7 @@ final class ProcessTest extends TestCase
 
     public function testAttributeIsReadableViaReflection(): void
     {
-        $class = new class () {
+        $class = new class {
             #[Process(
                 processors: ['required', 'email'],
                 messages: ['email' => 'Invalid email.'],
@@ -73,7 +73,7 @@ final class ProcessTest extends TestCase
 
     public function testAttributeIsRepeatable(): void
     {
-        $class = new class () {
+        $class = new class {
             #[Process(processors: ['trim'])]
             #[Process(processors: ['email'])]
             public string $email = '';

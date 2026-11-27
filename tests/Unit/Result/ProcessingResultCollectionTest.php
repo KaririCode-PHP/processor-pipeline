@@ -44,13 +44,13 @@ final class ProcessingResultCollectionTest extends TestCase
         $this->assertTrue($this->collection->hasErrors());
 
         $errors = $this->collection->getErrors();
-        $this->assertArrayHasKey('Email', $errors);
-        $this->assertCount(1, $errors['Email']);
-        $this->assertSame('invalidFormat', $errors['Email'][0]['errorKey']);
-        $this->assertSame('Not a valid email.', $errors['Email'][0]['message']);
+        $this->assertArrayHasKey('App\\Validator\\Email', $errors);
+        $this->assertCount(1, $errors['App\\Validator\\Email']);
+        $this->assertSame('invalidFormat', $errors['App\\Validator\\Email'][0]['errorKey']);
+        $this->assertSame('Not a valid email.', $errors['App\\Validator\\Email'][0]['message']);
     }
 
-    public function testAddErrorExtractsShortClassName(): void
+    public function testAddErrorKeepsTheFullyQualifiedName(): void
     {
         $this->collection->addError(
             'KaririCode\\Validator\\Processor\\Logic\\RequiredValidator',
@@ -59,7 +59,8 @@ final class ProcessingResultCollectionTest extends TestCase
         );
 
         $errors = $this->collection->getErrors();
-        $this->assertArrayHasKey('RequiredValidator', $errors);
+        $this->assertArrayHasKey('KaririCode\\Validator\\Processor\\Logic\\RequiredValidator', $errors);
+        $this->assertArrayNotHasKey('RequiredValidator', $errors);
     }
 
     public function testAddErrorAccumulatesMultipleErrorsPerProcessor(): void
@@ -68,7 +69,7 @@ final class ProcessingResultCollectionTest extends TestCase
         $this->collection->addError('App\\Proc', 'err2', 'Second');
 
         $errors = $this->collection->getErrors();
-        $this->assertCount(2, $errors['Proc']);
+        $this->assertCount(2, $errors['App\\Proc']);
     }
 
     public function testAddErrorAccumulatesAcrossProcessors(): void
@@ -77,8 +78,8 @@ final class ProcessingResultCollectionTest extends TestCase
         $this->collection->addError('App\\Beta', 'e2', 'msg2');
 
         $errors = $this->collection->getErrors();
-        $this->assertCount(1, $errors['Alpha']);
-        $this->assertCount(1, $errors['Beta']);
+        $this->assertCount(1, $errors['App\\Alpha']);
+        $this->assertCount(1, $errors['App\\Beta']);
     }
 
     // ── Warning Recording ───────────────────────────────────────────
@@ -90,8 +91,8 @@ final class ProcessingResultCollectionTest extends TestCase
         $this->assertTrue($this->collection->hasWarnings());
 
         $warnings = $this->collection->getWarnings();
-        $this->assertArrayHasKey('Proc', $warnings);
-        $this->assertSame('deprecatedField', $warnings['Proc'][0]['errorKey']);
+        $this->assertArrayHasKey('App\\Proc', $warnings);
+        $this->assertSame('deprecatedField', $warnings['App\\Proc'][0]['errorKey']);
     }
 
     public function testWarningsDoNotAffectErrors(): void
@@ -188,8 +189,8 @@ final class ProcessingResultCollectionTest extends TestCase
         $this->collection->merge($other);
 
         $errors = $this->collection->getErrors();
-        $this->assertArrayHasKey('A', $errors);
-        $this->assertArrayHasKey('B', $errors);
+        $this->assertArrayHasKey('App\\A', $errors);
+        $this->assertArrayHasKey('App\\B', $errors);
     }
 
     public function testMergeCombinesWarnings(): void
@@ -202,8 +203,8 @@ final class ProcessingResultCollectionTest extends TestCase
         $this->collection->merge($other);
 
         $warnings = $this->collection->getWarnings();
-        $this->assertArrayHasKey('A', $warnings);
-        $this->assertArrayHasKey('B', $warnings);
+        $this->assertArrayHasKey('App\\A', $warnings);
+        $this->assertArrayHasKey('App\\B', $warnings);
     }
 
     public function testMergeCombinesTraces(): void
@@ -227,7 +228,7 @@ final class ProcessingResultCollectionTest extends TestCase
 
         $this->collection->merge($other);
 
-        $this->assertCount(2, $this->collection->getErrors()['Proc']);
+        $this->assertCount(2, $this->collection->getErrors()['App\\Proc']);
     }
 
     public function testMergeDoesNotModifySource(): void
@@ -238,7 +239,7 @@ final class ProcessingResultCollectionTest extends TestCase
         $this->collection->merge($other);
 
         // Source unchanged
-        $this->assertCount(1, $other->getErrors()['X']);
+        $this->assertCount(1, $other->getErrors()['App\\X']);
     }
 
     // ── Reset ───────────────────────────────────────────────────────
@@ -255,6 +256,29 @@ final class ProcessingResultCollectionTest extends TestCase
         $this->assertFalse($this->collection->hasWarnings());
         $this->assertSame([], $this->collection->getExecutionTrace());
         $this->assertSame(0, $this->collection->errorCount);
+    }
+
+    // ── Regression: identity must be unambiguous (ARFA P5) ─────────
+
+    public function testSameShortNameInDifferentNamespacesStaysSeparate(): void
+    {
+        $this->collection->addError('App\\Validator\\Email', 'invalid', 'from app');
+        $this->collection->addError('Vendor\\Rules\\Email', 'invalid', 'from vendor');
+
+        $this->assertCount(2, $this->collection->errors);
+        $this->assertSame('from app', $this->collection->errors['App\\Validator\\Email'][0]['message']);
+        $this->assertSame('from vendor', $this->collection->errors['Vendor\\Rules\\Email'][0]['message']);
+    }
+
+    public function testErrorKeyAndTraceUseTheSameIdentity(): void
+    {
+        $this->collection->recordExecution('App\\Validator\\Email');
+        $this->collection->addError('App\\Validator\\Email', 'invalid', 'msg');
+
+        $this->assertSame(
+            $this->collection->executionTrace[0],
+            array_key_first($this->collection->errors),
+        );
     }
 
     // ── Edge Cases ──────────────────────────────────────────────────

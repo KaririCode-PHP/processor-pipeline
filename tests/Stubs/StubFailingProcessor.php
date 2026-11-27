@@ -10,9 +10,9 @@ final class StubFailingProcessor implements Processor
 {
     public function __construct(
         private readonly \Throwable $exception,
-    ) {
-    }
+    ) {}
 
+    #[\Override]
     public function process(mixed $input): mixed
     {
         throw $this->exception;

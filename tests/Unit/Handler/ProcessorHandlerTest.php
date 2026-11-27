@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace KaririCode\ProcessorPipeline\Tests\Unit\Handler;
 
+use KaririCode\Contract\Processor\Processor;
+use KaririCode\ProcessorPipeline\Handler\ProcessorDecorator;
 use KaririCode\ProcessorPipeline\Handler\ProcessorHandler;
 use KaririCode\ProcessorPipeline\Result\ProcessingResultCollection;
 use KaririCode\ProcessorPipeline\Tests\Stubs\StubFailingProcessor;
@@ -88,9 +90,9 @@ final class ProcessorHandlerTest extends TestCase
         $this->assertTrue($this->results->hasErrors());
 
         $errors = $this->results->getErrors();
-        $this->assertArrayHasKey('StubFailingProcessor', $errors);
-        $this->assertSame('processingFailed', $errors['StubFailingProcessor'][0]['errorKey']);
-        $this->assertSame('validation failed', $errors['StubFailingProcessor'][0]['message']);
+        $this->assertArrayHasKey(StubFailingProcessor::class, $errors);
+        $this->assertSame('processingFailed', $errors[StubFailingProcessor::class][0]['errorKey']);
+        $this->assertSame('validation failed', $errors[StubFailingProcessor::class][0]['message']);
     }
 
     public function testProcessRecordsTraceEvenOnError(): void
@@ -163,6 +165,15 @@ final class ProcessorHandlerTest extends TestCase
 
     // ── Processor Interface Compliance ──────────────────────────────
 
+    public function testHandlerExposesTheWrappedProcessor(): void
+    {
+        $inner = StubProcessor::identity();
+        $handler = new ProcessorHandler(processor: $inner, resultCollection: $this->results);
+
+        $this->assertInstanceOf(ProcessorDecorator::class, $handler);
+        $this->assertSame($inner, $handler->innerProcessor());
+    }
+
     public function testHandlerImplementsProcessorInterface(): void
     {
         $handler = new ProcessorHandler(
@@ -171,5 +182,54 @@ final class ProcessorHandlerTest extends TestCase
         );
 
         $this->assertInstanceOf(\KaririCode\Contract\Processor\Processor::class, $handler);
+    }
+
+    public function testIdentityLooksThroughNestedDecorators(): void
+    {
+        // Pipeline names stages after the innermost processor; the handler must agree.
+        $failing = new class implements Processor {
+            public function process(mixed $input): mixed
+            {
+                throw new \RuntimeException('boom');
+            }
+        };
+        $decorator = new class ($failing) implements ProcessorDecorator {
+            public function __construct(private readonly Processor $inner) {}
+
+            public function innerProcessor(): Processor
+            {
+                return $this->inner;
+            }
+
+            public function process(mixed $input): mixed
+            {
+                return $this->inner->process($input);
+            }
+        };
+        $results = new ProcessingResultCollection();
+
+        new ProcessorHandler($decorator, $results, haltOnError: false)->process('x');
+
+        $this->assertSame([$failing::class], $results->executionTrace);
+        $this->assertSame([$failing::class], array_keys($results->errors));
+    }
+
+    #[\PHPUnit\Framework\Attributes\Group('fail-closed')]
+    public function testFailsClosedByDefault(): void
+    {
+        // Spec V4.3.3 §8.3 / §18: a failure must not let later stages run on
+        // unvalidated data unless the caller opts into collect-all mode.
+        $results = new ProcessingResultCollection();
+        $handler = new ProcessorHandler(StubFailingProcessor::withMessage('rejected'), $results);
+
+        $rethrown = false;
+        try {
+            $handler->process('x');
+        } catch (\RuntimeException) {
+            $rethrown = true;
+        }
+
+        $this->assertTrue($rethrown, 'A default handler must rethrow.');
+        $this->assertSame(1, $results->errorCount);
     }
 }

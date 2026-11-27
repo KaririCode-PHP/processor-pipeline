@@ -1,0 +1,10 @@
+includes:
+    - vendor/tomasvotruba/cognitive-complexity/config/extension.neon
+
+parameters:
+    level: 0
+    paths:
+        - src
+    cognitive_complexity:
+        class: 50
+        function: 15
