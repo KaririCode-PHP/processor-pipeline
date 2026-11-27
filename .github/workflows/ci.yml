@@ -3,8 +3,8 @@
 # malicious code (CVE-2025-30066, tj-actions/changed-files). The comment after
 # each pin names the release it resolves to.
 #
-# Until kariricode/contract 2.11.0 is tagged, "composer install" cannot
-# resolve the dependency and this workflow is expected to fail (QD §5).
+# kcode 1.2.1, pinned by version and SHA-256, installs the toolchain of
+# devkit.php and runs the root configs (ADR-009).
 name: CI
 
 on:
@@ -15,6 +15,10 @@ on:
 
 permissions:
   contents: read
+
+env:
+  KCODE_VERSION: 1.2.1
+  KCODE_SHA256: 1bc43b06798b4e7fc1df341cc505f316549f0dd5efb9c8d80031415b0cdf3e3b
 
 jobs:
   gates:
@@ -30,6 +34,12 @@ jobs:
           tools: composer:v2
       - run: composer validate --strict
       - run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Install kcode ${{ env.KCODE_VERSION }}, checksum verified
+        run: |
+          curl -fsSLo kcode.phar "https://github.com/KaririCode-PHP/devkit/releases/download/v${KCODE_VERSION}/kcode.phar"
+          echo "${KCODE_SHA256}  kcode.phar" | sha256sum -c -
+          sudo install -m 0755 kcode.phar /usr/local/bin/kcode
+      - run: kcode init
       - run: composer check-platform-reqs
       - run: composer cs-check
       - run: composer phpstan
