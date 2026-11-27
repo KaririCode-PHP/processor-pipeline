@@ -241,7 +241,7 @@ Measured values and open items: [QD-V433-COMPLIANCE](docs/quality/QD-V433-COMPLI
 ## Documentation
 
 - [SPEC-001](docs/spec/SPEC-001-processor-pipeline.md): types, algorithms, error model, migration from 1.x
-- [ADR-001 … ADR-008](docs/adr/): design decisions
+- [ADR-001 … ADR-009](docs/adr/): design decisions
 - [SECURITY.md](SECURITY.md) and [CHANGELOG.md](CHANGELOG.md)
 
 Class docblocks hold the detailed reference; their examples run in the test
@@ -249,7 +249,7 @@ suite.
 
 ## Development
 
-This package keeps no QA tools in `require-dev`. [KaririCode Devkit](https://github.com/KaririCode-PHP/devkit) (`kcode`) installs PHPUnit, PHPStan, Psalm, PHP-CS-Fixer and Rector into `.kcode/` (git-ignored) the first time a command needs them.
+The package keeps no QA tool in `require-dev`. [KaririCode Devkit](https://github.com/KaririCode-PHP/devkit) (`kcode`) installs the tools pinned in `devkit.php` into `.kcode/` (git-ignored) and runs this repository's own configs (`'root_configs' => true`, ADR-009).
 
 Install `kcode` once (PHP 8.4+):
 
@@ -262,29 +262,26 @@ sudo mv kcode.phar /usr/local/bin/kcode
 From the repository root:
 
 ```bash
-composer install          # runtime dependencies only
-kcode init                # generate .kcode/ and install the toolchain (first run)
-kcode test                # PHPUnit (--coverage, --suite=Unit, any PHPUnit option)
-kcode analyse             # PHPStan, then Psalm
-kcode cs:fix              # apply the code style (--check reports only)
-kcode quality             # the CI gate: cs-fixer, PHPStan, Psalm, PHPUnit
-kcode quality --docker    # the same gate inside the kcode PHP container
+composer install          # kariricode/contract only
+kcode init                # install the pinned toolchain into .kcode/
+composer check            # cs-check, phpstan, psalm, complexity, test, test-conformance, security
+composer infection        # mutation testing (MSI ≥ 80; needs pcov or Xdebug)
+composer sbom             # CycloneDX 1.5
 ```
-
-Project overrides go in `devkit.php` (`kcode init --config` writes a template); run `kcode init` after editing it. `kcode clean --all` removes `.kcode/`.
 
 ---
 
 ## Contributing
 
 ```bash
-git clone https://github.com/KaririCode-Framework/kariricode-processor-pipeline.git
-cd kariricode-processor-pipeline
+git clone https://github.com/KaririCode-PHP/processor-pipeline.git
+cd processor-pipeline
 composer install
+kcode init
 composer check   # must pass before a pull request
 ```
 
-Pull requests target `develop`. Report vulnerabilities privately, as
+Pull requests target `main`. Report vulnerabilities privately, as
 [SECURITY.md](SECURITY.md) describes.
 
 ## License

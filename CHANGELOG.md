@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. The format follows
 Keep a Changelog; versions follow Semantic Versioning (Spec V4.3.3 §32).
 
-## [3.0.0] - Unreleased
+## [3.0.0] - 2026-11-27
 
 Brings the component to KaririCode Spec V4.3.3 and kariricode/contract 2.11.
 Migration notes: SPEC-001 §8.1.
@@ -52,10 +52,13 @@ Migration notes: SPEC-001 §8.1.
 
 ### Changed
 
-- `ci.yml` runs the Composer gates instead of the KaririCode DevKit, and both
-  `ci.yml` and `release.yml` pin actions by commit SHA. `release.yml` takes the
-  release notes from this file and attaches the SBOM. Spec V4.3.3 tooling
-  takes precedence over DevKit conventions.
+- `ci.yml` and `release.yml` pin actions by commit SHA. `release.yml` takes
+  the release notes from this file and attaches the SBOM.
+- The toolchain comes from KaririCode Devkit, pinned in `devkit.php`, and
+  runs the root configs (ADR-009), so the Spec V4.3.3 gates stay as they
+  are: `require-dev` is gone, `composer.lock` holds kariricode/contract
+  2.12.0 only, and `composer security` also audits the toolchain. CI installs
+  kcode 1.2.1 by version and SHA-256.
 
 ### Fixed
 

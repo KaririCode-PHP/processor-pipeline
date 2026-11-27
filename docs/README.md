@@ -16,6 +16,7 @@
 | [ADR-006](adr/ADR-006-observability-model.md) | Observer metrics, decorator attribution, failure chaining | Accepted |
 | [ADR-007](adr/ADR-007-exception-model-and-fail-closed-defaults.md) | Contract exception families, codes 8500–8599, messages without caller values, fail-closed handler |
 | [ADR-008](adr/ADR-008-resilience-decorators-over-contract-ports.md) | Circuit breaker, rate limit and retry as decorators over kariricode/contract ports |
+| [ADR-009](adr/ADR-009-toolchain-through-kcode.md) | Toolchain through KaririCode Devkit with the root configs | Accepted |
 
 The package overview and usage guide is the root [README](../README.md).
 
