@@ -1,5 +1,5 @@
 includes:
-    - vendor/tomasvotruba/cognitive-complexity/config/extension.neon
+    - .kcode/vendor/tomasvotruba/cognitive-complexity/config/extension.neon
 
 parameters:
     level: 0

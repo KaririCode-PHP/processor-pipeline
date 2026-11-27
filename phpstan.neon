@@ -1,5 +1,9 @@
+# kcode installs the toolchain into .kcode/ and runs this file (ADR-009).
 parameters:
     level: max
     paths:
         - src
         - tests
+    # The tests extend PHPUnit, which comes with the toolchain.
+    scanDirectories:
+        - .kcode/vendor/phpunit/phpunit/src

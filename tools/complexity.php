@@ -8,7 +8,8 @@ declare(strict_types=1);
  * which can only shrink: a new breach, a changed value or a stale entry fails.
  */
 
-require __DIR__ . '/../vendor/autoload.php';
+// nikic/php-parser comes with the toolchain kcode installs (ADR-009).
+require __DIR__ . '/../.kcode/vendor/autoload.php';
 
 use PhpParser\Node;
 use PhpParser\NodeFinder;

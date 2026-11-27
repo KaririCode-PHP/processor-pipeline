@@ -10,6 +10,7 @@
 /.vscode                  export-ignore
 /Makefile                 export-ignore
 /composer.lock            export-ignore
+/devkit.php               export-ignore
 /docker-compose.yml       export-ignore
 /infection.json.dist      export-ignore
 /phpcs.xml                export-ignore

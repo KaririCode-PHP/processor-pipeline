@@ -30,15 +30,6 @@
         "php": "^8.4",
         "kariricode/contract": "^2.11"
     },
-    "require-dev": {
-        "friendsofphp/php-cs-fixer": "^3.0",
-        "infection/infection": "^0.29",
-        "nikic/php-parser": "^5.4",
-        "phpstan/phpstan": "^2.0",
-        "phpunit/phpunit": "^11.0",
-        "tomasvotruba/cognitive-complexity": "^1.0",
-        "vimeo/psalm": "^6.0"
-    },
     "autoload": {
         "psr-4": {
             "KaririCode\\ProcessorPipeline\\": "src/"
@@ -53,21 +44,22 @@
         ]
     },
     "scripts": {
-        "test": "phpunit --testsuite=unit,integration,documentation",
-        "test-conformance": "phpunit --testsuite=conformance",
-        "phpstan": "phpstan analyse --no-progress --memory-limit=1G",
-        "psalm": "psalm --no-cache --no-progress",
-        "cs-check": "php-cs-fixer fix --dry-run --diff",
-        "cs-fix": "php-cs-fixer fix",
+        "test": "kcode test --testsuite=unit,integration,documentation",
+        "test-conformance": "kcode test --testsuite=conformance",
+        "phpstan": "kcode run phpstan analyse --no-progress --memory-limit=1G",
+        "psalm": "kcode run psalm --no-cache --no-progress",
+        "cs-check": "kcode cs:fix --check",
+        "cs-fix": "kcode cs:fix",
         "complexity": [
             "php tools/complexity.php",
-            "phpstan analyse -c phpstan-complexity.neon --no-progress --memory-limit=1G"
+            "kcode run phpstan analyse -c phpstan-complexity.neon --no-progress --memory-limit=1G"
         ],
-        "infection": "infection --threads=max --show-mutations",
+        "infection": "kcode run infection --threads=max --show-mutations",
         "security": [
             "php tools/secret-scan.php",
             "@composer audit --locked",
-            "phpunit --group=fail-closed"
+            "@composer audit --locked --working-dir=.kcode",
+            "kcode test --group=fail-closed"
         ],
         "sbom": "php tools/sbom.php sbom.cdx.json",
         "check": [
@@ -95,10 +87,7 @@
     },
     "config": {
         "sort-packages": true,
-        "optimize-autoloader": true,
-        "allow-plugins": {
-            "infection/extension-installer": true
-        }
+        "optimize-autoloader": true
     },
     "minimum-stability": "stable",
     "prefer-stable": true

@@ -11,6 +11,11 @@ declare(strict_types=1);
 $root = dirname(__DIR__);
 $lockName = preg_replace('/\.json$/', '.lock', getenv('COMPOSER') ?: 'composer.json');
 $lock = json_decode((string) file_get_contents("{$root}/{$lockName}"), true, flags: JSON_THROW_ON_ERROR);
+// The toolchain is installed by kcode (ADR-009); its lock lists the development components.
+$toolchain = is_file("{$root}/.kcode/composer.lock")
+    ? json_decode((string) file_get_contents("{$root}/.kcode/composer.lock"), true, flags: JSON_THROW_ON_ERROR)
+    : [];
+$development = [...($lock['packages-dev'] ?? []), ...($toolchain['packages'] ?? [])];
 $package = json_decode((string) file_get_contents("{$root}/composer.json"), true, flags: JSON_THROW_ON_ERROR);
 
 $component = static function (array $p, string $scope): array {
@@ -31,7 +36,7 @@ $component = static function (array $p, string $scope): array {
 
 $components = [
     ...array_map(static fn(array $p): array => $component($p, 'required'), $lock['packages'] ?? []),
-    ...array_map(static fn(array $p): array => $component($p, 'excluded'), $lock['packages-dev'] ?? []),
+    ...array_map(static fn(array $p): array => $component($p, 'excluded'), $development),
 ];
 
 $bom = [
@@ -59,5 +64,5 @@ printf(
     "sbom: %s — %d runtime, %d development (excluded)\n",
     $output,
     count($lock['packages'] ?? []),
-    count($lock['packages-dev'] ?? []),
+    count($development),
 );
