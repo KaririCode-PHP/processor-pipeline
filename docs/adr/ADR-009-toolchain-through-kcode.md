@@ -6,7 +6,7 @@
 
 ## Context
 
-The 3.0.0 work put the gates of QD-V433-COMPLIANCE §1 in `require-dev`: PHPStan max, Psalm level 1, PER-CS, the §13 budgets (`tools/complexity.php` and the cognitive-complexity rule), Infection at MSI ≥ 80, `composer audit`, a secret scan and the fail-closed group. Meanwhile the ecosystem settled on KaririCode Devkit for the toolchain, and Devkit 1.2.1 runs a component's committed configs (`'root_configs' => true`), so the gates do not have to weaken to move: kariricode/contract (ADR-008), kariricode/exception (ADR-003) and kariricode/property-inspector (ADR-013) moved first.
+The 3.0.0 work put the gates of QD-V433-COMPLIANCE §1 in `require-dev`: PHPStan max, Psalm level 1, PER-CS, the §13 budgets (`tools/complexity.php` and the cognitive-complexity rule), Infection at MSI ≥ 80, `composer audit`, a secret scan and the fail-closed group. Meanwhile the ecosystem settled on KaririCode Devkit for the toolchain, and Devkit 1.2.1 runs a component's committed configs (`'root_configs' => true`), so the gates do not have to weaken to move: kariricode/contract, kariricode/exception and kariricode/property-inspector moved first, each recording the change in an ADR of its own.
 
 ## Decision
 
